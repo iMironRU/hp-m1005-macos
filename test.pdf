@@ -1,0 +1,66 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1171 >>
+stream
+BT /F1 28 Tf 60 760 Td (HP LaserJet M1005 MFP) Tj ET
+BT /F1 14 Tf 60 730 Td (macOS + foo2xqx: test page) Tj ET
+BT /F1 10 Tf 60 712 Td (If you can read this, the driver works.) Tj ET
+0.5 w 60 600 m 535 600 l S
+0.000 g 60.00 520 23.75 60 re f
+0.053 g 83.75 520 23.75 60 re f
+0.105 g 107.50 520 23.75 60 re f
+0.158 g 131.25 520 23.75 60 re f
+0.211 g 155.00 520 23.75 60 re f
+0.263 g 178.75 520 23.75 60 re f
+0.316 g 202.50 520 23.75 60 re f
+0.368 g 226.25 520 23.75 60 re f
+0.421 g 250.00 520 23.75 60 re f
+0.474 g 273.75 520 23.75 60 re f
+0.526 g 297.50 520 23.75 60 re f
+0.579 g 321.25 520 23.75 60 re f
+0.632 g 345.00 520 23.75 60 re f
+0.684 g 368.75 520 23.75 60 re f
+0.737 g 392.50 520 23.75 60 re f
+0.789 g 416.25 520 23.75 60 re f
+0.842 g 440.00 520 23.75 60 re f
+0.895 g 463.75 520 23.75 60 re f
+0.947 g 487.50 520 23.75 60 re f
+1.000 g 511.25 520 23.75 60 re f
+0 g 60 300 200 150 re f
+0.3 w 300 300 m 535 300 l S
+0.6 w 300 315 m 535 315 l S
+0.9 w 300 330 m 535 330 l S
+1.2 w 300 345 m 535 345 l S
+1.5 w 300 360 m 535 360 l S
+1.8 w 300 375 m 535 375 l S
+2.1 w 300 390 m 535 390 l S
+2.4 w 300 405 m 535 405 l S
+2.7 w 300 420 m 535 420 l S
+3.0 w 300 435 m 535 435 l S
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001463 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1533
+%%EOF
