@@ -13,6 +13,7 @@
 #   --status           показать состояние
 #   --default          сделать принтером по умолчанию
 #   --clear            отменить все задания в очереди
+#   --diag             диагностика: тест с подробным журналом, отчёт на Рабочий стол
 #   --uninstall        удалить драйвер и принтер
 #
 # Цепочка печати: приложение → PDF → cgpdftoraster (macOS) → rastertoxqx
@@ -92,15 +93,16 @@ cat > "$1" <<'__RASTERTOXQX_C__'
 #define FOO2XQX_PATH "/Library/Printers/foo2xqx/Filter/foo2xqx"
 #endif
 
-typedef struct { const char *name; int w_pt, h_pt, code, w600, h600; } paper_t;
+typedef struct { const char *name; int w_pt, h_pt, code, w1200, h600, clip_x, clip_y; } paper_t;
 
-/* Размеры из foo2xqx-wrapper (1200x600), ширина поделена на 2 для 600x600 */
+/* Размеры и поля обрезки — как в foo2xqx-wrapper для 1200x600
+ * (для 600x600 значения по X делятся на 2, как делает wrapper). */
 static const paper_t PAPERS[] = {
-  { "A4",        595,  842,  9, 4960, 7016 },
-  { "Letter",    612,  792,  1, 5100, 6600 },
-  { "Legal",     612, 1008,  5, 5100, 8400 },
-  { "Executive", 522,  756,  7, 4350, 6300 },
-  { "A5",        420,  595, 11, 3496, 4960 },
+  { "A4",        595,  842,  9,  9920, 7016, 176, 84 },
+  { "Letter",    612,  792,  1, 10200, 6600, 177, 84 },
+  { "Legal",     612, 1008,  5, 10200, 8400, 177, 96 },
+  { "Executive", 522,  756,  7,  8700, 6300, 192, 96 },
+  { "A5",        420,  595, 11,  6992, 4960, 192, 96 },
 };
 
 static int near(int a, int b) { return abs(a - b) <= 3; }
@@ -126,6 +128,9 @@ static int luminance(const cups_page_header2_t *h, const unsigned char *row, uns
   case 8:
     if (h->cupsColorSpace == CUPS_CSPACE_K) return 255 - row[x];
     return row[x];                               /* W, SW */
+  case 16:                                       /* 16-бит серый, старший байт */
+    if (h->cupsColorSpace == CUPS_CSPACE_K) return 255 - row[2 * x];
+    return row[2 * x];
   case 24: {
     const unsigned char *p = row + 3 * x;        /* RGB, sRGB, AdobeRGB */
     return (p[0] * 77 + p[1] * 151 + p[2] * 28) >> 8;
@@ -135,24 +140,31 @@ static int luminance(const cups_page_header2_t *h, const unsigned char *row, uns
   }
 }
 
-static pid_t spawn_foo2xqx(int *wfd, const paper_t *pp, int w, int h,
+static pid_t spawn_foo2xqx(int *wfd, const paper_t *pp, int xres, int w, int h,
                            int density, const char *title, const char *user)
 {
   int fds[2];
   if (pipe(fds) < 0) { perror("ERROR: pipe"); return -1; }
 
-  char g[32], p[16], T[16];
+  int cx = pp ? pp->clip_x : 176, cy = pp ? pp->clip_y : 84;
+  if (xres == 600) cx /= 2;
+  char r[24], g[32], p[16], T[16], u[32], l[32];
+  snprintf(r, sizeof r, "-r%dx600", xres);
   snprintf(g, sizeof g, "-g%dx%d", w, h);
   snprintf(p, sizeof p, "-p%d", pp ? pp->code : 9);
   snprintf(T, sizeof T, "-T%d", density);
+  snprintf(u, sizeof u, "%dx%d", cx, cy);
+  snprintf(l, sizeof l, "%dx%d", cx, cy);
+  fprintf(stderr, "DEBUG: rastertoxqx: foo2xqx %s %s %s -m1 -n1 -d1 -s7 %s -u %s -l %s\n",
+          r, g, p, T, u, l);
 
   pid_t pid = fork();
   if (pid < 0) { perror("ERROR: fork"); return -1; }
   if (pid == 0) {
     dup2(fds[0], 0);
     close(fds[0]); close(fds[1]);
-    execl(FOO2XQX_PATH, "foo2xqx", "-r600x600", g, p, "-m1", "-n1", "-d1", "-s7",
-          T, "-J", title, "-U", user, (char *)NULL);
+    execl(FOO2XQX_PATH, "foo2xqx", r, g, p, "-m1", "-n1", "-d1", "-s7",
+          "-u", u, "-l", l, T, "-J", title, "-U", user, (char *)NULL);
     perror("ERROR: exec foo2xqx");
     _exit(127);
   }
@@ -196,7 +208,7 @@ int main(int argc, char *argv[])
   cups_raster_t *ras = cupsRasterOpen(in, CUPS_RASTER_READ);
   cups_page_header2_t h;
   pid_t child = -1;
-  int out = -1, W = 0, H = 0, page = 0, rc = 0;
+  int out = -1, W = 0, H = 0, xres = 600, page = 0, rc = 0;
   unsigned char *row = NULL, *pbm = NULL;
   int *err_cur = NULL, *err_next = NULL;
 
@@ -204,12 +216,21 @@ int main(int argc, char *argv[])
     page++;
     if (child < 0) {
       const paper_t *pp = find_paper(&h);
-      if (pp) { W = pp->w600; H = pp->h600; }
+      xres = h.HWResolution[0] >= 1200 ? 1200 : 600;
+      if (h.HWResolution[1] != 600)
+        fprintf(stderr, "WARNING: rastertoxqx: неожиданное разрешение %ux%u\n",
+                h.HWResolution[0], h.HWResolution[1]);
+      if (pp) { W = xres == 1200 ? pp->w1200 : pp->w1200 / 2; H = pp->h600; }
       else    { W = (int)h.cupsWidth; H = (int)h.cupsHeight; }
-      fprintf(stderr, "DEBUG: rastertoxqx: %s %dx%d, raster %ux%u, %u bpp, cspace %u, density %d\n",
-              pp ? pp->name : "custom(A4 code)", W, H, h.cupsWidth, h.cupsHeight,
+      fprintf(stderr, "DEBUG: rastertoxqx: %s %dx%d @%dx600, raster %ux%u @%ux%u, %u bpp, cspace %u, density %d\n",
+              pp ? pp->name : "custom(A4 code)", W, H, xres, h.cupsWidth, h.cupsHeight,
+              h.HWResolution[0], h.HWResolution[1],
               h.cupsBitsPerPixel, h.cupsColorSpace, density);
-      child = spawn_foo2xqx(&out, pp, W, H, density, argv[3], argv[2]);
+      if (h.cupsBitsPerPixel != 1 && h.cupsBitsPerPixel != 8 &&
+          h.cupsBitsPerPixel != 16 && h.cupsBitsPerPixel != 24)
+        fprintf(stderr, "ERROR: rastertoxqx: неподдерживаемый растр %u bpp (cspace %u) — страница выйдет пустой\n",
+                h.cupsBitsPerPixel, h.cupsColorSpace);
+      child = spawn_foo2xqx(&out, pp, xres, W, H, density, argv[3], argv[2]);
       if (child < 0) { rc = 1; break; }
       pbm = malloc((size_t)(W + 7) / 8);
       err_cur = calloc((size_t)W + 2, sizeof(int));
@@ -354,8 +375,9 @@ cat > "$1" <<'__PPD__'
 
 *OpenUI *Resolution/Resolution: PickOne
 *OrderDependency: 20 AnySetup *Resolution
-*DefaultResolution: 600dpi
-*Resolution 600dpi/600 DPI: "<</HWResolution[600 600]/cupsBitsPerColor 8/cupsRowCount 0/cupsRowFeed 0/cupsRowStep 0/cupsColorSpace 18/cupsColorOrder 0>>setpagedevice"
+*DefaultResolution: 1200x600dpi
+*Resolution 1200x600dpi/1200x600 DPI: "<</HWResolution[1200 600]/cupsBitsPerColor 8/cupsRowCount 0/cupsRowFeed 0/cupsRowStep 0/cupsColorSpace 18/cupsColorOrder 0>>setpagedevice"
+*Resolution 600dpi/600x600 DPI: "<</HWResolution[600 600]/cupsBitsPerColor 8/cupsRowCount 0/cupsRowFeed 0/cupsRowStep 0/cupsColorSpace 18/cupsColorOrder 0>>setpagedevice"
 *CloseUI: *Resolution
 
 *OpenUI *foo2Density/Toner Density: PickOne
@@ -560,6 +582,61 @@ do_clear() {
     as_root cupsenable "$QUEUE" 2>/dev/null || true
 }
 
+do_diag() {
+    queue_exists || { warn "принтер $QUEUE не установлен — сначала выберите установку."; return 1; }
+    need_root
+    workdir
+    local report="$HOME/Desktop/m1005-diag.txt"
+    [ -d "$HOME/Desktop" ] || report="$HOME/m1005-diag.txt"
+    local log=/private/var/log/cups/error_log
+
+    say "Включаю подробный журнал CUPS"
+    as_root cupsctl --debug-logging
+    sleep 2
+    local start_lines=0
+    [ -f "$log" ] && start_lines="$(as_root wc -l < "$log" | tr -d ' ')"
+
+    write_test_pdf "$WORK/test.pdf"
+    say "Печатаю тестовую страницу"
+    local req id
+    req="$(lp -d "$QUEUE" -t "M1005 diag" "$WORK/test.pdf")"
+    id="$(printf '%s' "$req" | sed -nE "s/.*$QUEUE-([0-9]+).*/\\1/p" | head -n1)"
+    echo "    задание: ${id:-?}"
+
+    say "Жду завершения задания (до 2 минут)"
+    local waited=0
+    while [ "$waited" -lt 120 ] && lpstat -W not-completed -o "$QUEUE" 2>/dev/null | grep -E "^$QUEUE-$id[[:space:]]" >/dev/null; do
+        sleep 3; waited=$((waited + 3))
+    done
+    sleep 2
+
+    {
+        echo "=== m1005 diag $(date '+%Y-%m-%d %H:%M:%S')"
+        sw_vers 2>/dev/null; uname -m
+        echo; do_status 2>&1 | sed $'s/\033\\[[0-9;]*m//g'
+        echo; echo "=== lpoptions"; lpoptions -p "$QUEUE" 2>&1
+        echo; echo "=== lpstat job $id"; lpstat -W all -o "$QUEUE" 2>&1 | grep -E "^$QUEUE-$id[[:space:]]" || true
+        echo; echo "=== error_log [Job $id]"
+        if [ -f "$log" ]; then
+            as_root tail -n +"$((start_lines + 1))" "$log" \
+                | grep -E "\[Job $id\]|rastertoxqx|foo2xqx|usb|Sandbox|sandbox" \
+                | grep -vE 'envp\[|argv\[' | tail -n 400
+        else
+            echo "(нет $log, беру unified log)"
+            log show --last 5m --predicate 'process == "cupsd" OR process CONTAINS "rastertoxqx"' 2>/dev/null \
+                | grep -E "Job $id|rastertoxqx|foo2xqx|usb|andbox" | tail -n 400
+        fi
+    } > "$report" 2>&1 || true
+
+    say "Выключаю подробный журнал CUPS"
+    as_root cupsctl --no-debug-logging || true
+
+    echo
+    ok "Отчёт сохранён: $report"
+    echo "    Пришлите этот файл разработчику. Ключевые строки:"
+    grep -E "rastertoxqx:|ERROR|WARNING" "$report" | head -n 12 | sed 's/^/    /' || true
+}
+
 do_uninstall() {
     need_root
     say "Удаляю драйвер и принтер"
@@ -586,7 +663,7 @@ usage() {
   $ONE_LINER                     — меню
   $ONE_LINER -s -- --install     — установить всё
   $ONE_LINER -s -- --install --no-test
-  $ONE_LINER -s -- --test | --status | --default | --clear | --uninstall
+  $ONE_LINER -s -- --test | --status | --default | --clear | --diag | --uninstall
 __USAGE__
 }
 
@@ -602,6 +679,7 @@ menu() {
         echo "  5) Сделать принтером по умолчанию"
         echo "  6) Отменить все задания в очереди"
         echo "  7) Удалить драйвер и принтер"
+        echo "  8) Диагностика (тест + подробный журнал в файл)"
         echo "  0) Выход"
         printf "Выберите пункт: "
         local c; IFS= read -r c </dev/tty || exit 0
@@ -614,6 +692,7 @@ menu() {
             6) run do_clear ;;
             7) printf "Точно удалить? [y/N] "; local y; IFS= read -r y </dev/tty
                case "$y" in y|Y|д|Д) run do_uninstall ;; *) echo "Отменено." ;; esac ;;
+            8) run do_diag ;;
             0|q|Q|"") exit 0 ;;
             *) warn "нет такого пункта: $c" ;;
         esac
@@ -640,6 +719,7 @@ main() {
             --default)   action=default ;;
             --clear)     action=clear ;;
             --uninstall) action=uninstall ;;
+            --diag)      action=diag ;;
             -h|--help)   usage; return ;;
             *) die "неизвестный параметр: $a (см. --help)" ;;
         esac
@@ -652,6 +732,7 @@ main() {
         default)   do_default ;;
         clear)     do_clear ;;
         uninstall) do_uninstall ;;
+        diag)      do_diag ;;
     esac
 }
 

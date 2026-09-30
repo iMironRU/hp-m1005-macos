@@ -24,6 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/instal
   5) Сделать принтером по умолчанию
   6) Отменить все задания в очереди
   7) Удалить драйвер и принтер
+  8) Диагностика (тест + подробный журнал в файл)
   0) Выход
 ```
 
@@ -36,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/instal
 curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | bash -s -- --install
 ```
 
-Параметры: `--install`, `--install --no-test`, `--test`, `--status`, `--default`, `--clear`, `--uninstall`, `--help`.
+Параметры: `--install`, `--install --no-test`, `--test`, `--status`, `--default`, `--clear`, `--diag`, `--uninstall`, `--help`.
 
 ## Что ставится
 
@@ -52,10 +53,16 @@ curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/instal
 ## Настройки в диалоге печати
 
 Размер бумаги: A4, Letter, Legal, Executive, A5. Плотность тонера: 1–5.
+Разрешение: 1200×600 (по умолчанию, как в штатном foo2zjs) или 600×600.
+
+## Если печатает не то
+
+Выберите в меню пункт 8 «Диагностика»: скрипт напечатает тест с подробным журналом CUPS
+и сохранит отчёт `m1005-diag.txt` на Рабочий стол.
 
 ## Ограничения
 
-Поддерживается только печать, сканер не поддерживается. Разрешение 600×600 dpi.
+Поддерживается только печать, сканер не поддерживается.
 
 ## Лицензия
 
