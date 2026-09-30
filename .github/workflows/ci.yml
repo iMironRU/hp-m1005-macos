@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-13]   # Apple Silicon и Intel
+        os: [macos-latest, macos-15-intel]   # Apple Silicon и Intel
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
