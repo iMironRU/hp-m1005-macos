@@ -226,14 +226,33 @@ int main(int argc, char *argv[])
     int hl = snprintf(hdr, sizeof hdr, "P4\n%d %d\n", W, H);
     if (write_all(out, hdr, (size_t)hl) < 0) { rc = 1; break; }
 
+    /* macOS (cgpdftoraster) отдаёт растр только печатаемой области
+     * (ImageableArea из PPD), без полей. Сдвигаем его на место на листе. */
+    int ox = 0, oy = 0;
+    if ((int)h.cupsWidth < W && h.HWResolution[0])
+      ox = (int)(h.Margins[0] * h.HWResolution[0] / 72);
+    if ((int)h.cupsHeight < H && h.HWResolution[1] && h.ImagingBoundingBox[3] > 0 &&
+        h.PageSize[1] > h.ImagingBoundingBox[3])
+      oy = (int)((h.PageSize[1] - h.ImagingBoundingBox[3]) * h.HWResolution[1] / 72);
+    if (ox < 0 || ox >= W) ox = 0;
+    if (oy < 0 || oy >= H) oy = 0;
+    if (page == 1)
+      fprintf(stderr, "DEBUG: rastertoxqx: offset %d,%d px\n", ox, oy);
+
     const size_t rb = (size_t)(W + 7) / 8;
+    unsigned rows_read = 0;
     for (int y = 0; y < H; y++) {
-      int have = (unsigned)y < h.cupsHeight;
-      if (have && cupsRasterReadPixels(ras, row, h.cupsBytesPerLine) == 0) have = 0;
+      int ry = y - oy;
+      int have = ry >= 0 && (unsigned)ry < h.cupsHeight;
+      if (have) {
+        if (cupsRasterReadPixels(ras, row, h.cupsBytesPerLine) == 0) have = 0;
+        rows_read++;
+      }
       memset(pbm, 0, rb);
       memset(err_next, 0, sizeof(int) * ((size_t)W + 2));
       for (int x = 0; x < W; x++) {
-        int v = (have && (unsigned)x < h.cupsWidth) ? luminance(&h, row, (unsigned)x) : 255;
+        int rx = x - ox;
+        int v = (have && rx >= 0 && (unsigned)rx < h.cupsWidth) ? luminance(&h, row, (unsigned)rx) : 255;
         v += err_cur[x + 1] / 16;
         int black = v < 128;
         int e = v - (black ? 0 : 255);
@@ -248,7 +267,7 @@ int main(int argc, char *argv[])
       if (write_all(out, pbm, rb) < 0) { rc = 1; break; }
     }
     /* Дочитать хвост растра, если он длиннее бумаги */
-    for (unsigned y = (unsigned)H; y < h.cupsHeight; y++)
+    for (unsigned y = rows_read; y < h.cupsHeight; y++)
       cupsRasterReadPixels(ras, row, h.cupsBytesPerLine);
     if (rc) break;
   }
@@ -437,7 +456,8 @@ ensure_clt() {
 
 # --- Действия ----------------------------------------------------------------
 find_usb_uri() {
-    as_root lpinfo -v 2>/dev/null | awk '/^direct usb:\/\/.*M1005/ {print $2; exit}'
+    as_root lpinfo --include-schemes usb -v 2>/dev/null \
+        | awk '!f && /^direct usb:\/\/.*M1005/ {print $2; f=1}' || true
 }
 
 do_install() {
@@ -518,7 +538,8 @@ do_status() {
     else
         bad "принтер $QUEUE не создан"
     fi
-    local uri; uri="$(lpinfo -v 2>/dev/null | awk '/^direct usb:\/\/.*M1005/ {print $2; exit}' || true)"
+    local uri; uri="$(lpinfo --include-schemes usb -v 2>/dev/null \
+        | awk '!f && /^direct usb:\/\/.*M1005/ {print $2; f=1}' || true)"
     if [ -n "$uri" ]; then ok "на USB: $uri"; else bad "принтер на USB не виден (или нужен пароль для проверки)"; fi
     if queue_exists; then
         local jobs; jobs="$(lpstat -W not-completed -o "$QUEUE" 2>/dev/null || true)"
