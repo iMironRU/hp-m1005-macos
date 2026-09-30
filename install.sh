@@ -605,7 +605,7 @@ do_diag() {
 
     say "Жду завершения задания (до 2 минут)"
     local waited=0
-    while [ "$waited" -lt 120 ] && lpstat -W not-completed -o "$QUEUE" 2>/dev/null | grep -E "^$QUEUE-$id[[:space:]]" >/dev/null; do
+    while [ "$waited" -lt 120 ] && lpstat -W not-completed -o "$QUEUE" 2>/dev/null | grep -E "^${QUEUE}-${id}[[:space:]]" >/dev/null; do
         sleep 3; waited=$((waited + 3))
     done
     sleep 2
@@ -615,7 +615,7 @@ do_diag() {
         sw_vers 2>/dev/null; uname -m
         echo; do_status 2>&1 | sed $'s/\033\\[[0-9;]*m//g'
         echo; echo "=== lpoptions"; lpoptions -p "$QUEUE" 2>&1
-        echo; echo "=== lpstat job $id"; lpstat -W all -o "$QUEUE" 2>&1 | grep -E "^$QUEUE-$id[[:space:]]" || true
+        echo; echo "=== lpstat job $id"; lpstat -W all -o "$QUEUE" 2>&1 | grep -E "^${QUEUE}-${id}[[:space:]]" || true
         echo; echo "=== error_log [Job $id]"
         if [ -f "$log" ]; then
             as_root tail -n +"$((start_lines + 1))" "$log" \
@@ -714,7 +714,7 @@ main() {
         case "$a" in
             --install)   action=install ;;
             --no-test)   test=0; action="${action:-install}" ;;
-            --test)      action=test ;;
+            --test)      action="test" ;;
             --status)    action=status ;;
             --default)   action=default ;;
             --clear)     action=clear ;;

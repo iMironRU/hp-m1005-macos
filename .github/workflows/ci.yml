@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -S warning install.sh tests/pipeline.sh
+
+  pipeline:
+    name: pipeline (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-13]   # Apple Silicon и Intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n
+        run: bash -n install.sh
+      - name: PDF → raster → rastertoxqx → foo2xqx → decode
+        run: tests/pipeline.sh
