@@ -6,26 +6,23 @@
 
 ## Установка одной строкой
 
-Принтер должен быть включён и подключён по USB.
+Включите принтер, подключите его по USB, откройте «Терминал» и вставьте:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | bash
 ```
 
-Если Command Line Tools ещё не установлены, сначала один раз (без sudo):
-
-```bash
-xcode-select --install
-```
+Скрипт спросит пароль администратора и сам сделает всё остальное: при необходимости
+установит Command Line Tools, соберёт драйвер, создаст принтер и напечатает тестовую страницу.
 
 Варианты:
 
 ```bash
 # без тестовой страницы
-curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | sudo bash -s -- --no-test
+curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | bash -s -- --no-test
 
 # удаление
-curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | sudo bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/iMironRU/hp-m1005-macos/main/install.sh | bash -s -- --uninstall
 ```
 
 ## Установка из клона
